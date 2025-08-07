@@ -1,0 +1,68 @@
+# file: .github/workflows/update-duckdb.yml
+name: Update pre-compiled DuckDB library
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: 1. Checkout a copy of our repository
+        uses: actions/checkout@v4
+
+      - name: 2. Setup MSYS2 environment
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+
+      - name: 3. Get latest DuckDB version tag
+        id: get_version
+        shell: msys2 {0}
+        run: |
+          LATEST_TAG=$(gh release list --repo duckdb/duckdb --limit 1 --json tagName --jq '.[0].tagName')
+          echo "Latest DuckDB version is $LATEST_TAG"
+          echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 4. Clone and build DuckDB from source
+        shell: msys2 {0}
+        run: |
+          DUCKDB_VERSION=${{ steps.get_version.outputs.tag }}
+          echo "Cloning DuckDB version $DUCKDB_VERSION..."
+          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb_source
+          cd duckdb_source
+          echo "Configuring with CMake..."
+          mkdir build && cd build
+          cmake .. -G "MinGW Makefiles" -D BUILD_SHARED_LIBS=OFF -D CMAKE_BUILD_TYPE=Release
+          echo "Building duckdb_static library..."
+          mingw32-make duckdb_static -j$(nproc)
+
+      - name: 5. Copy artifacts to our repository
+        shell: msys2 {0}
+        run: |
+          echo "Copying new library and headers..."
+          cp duckdb_source/build/src/libduckdb.a ./lib/
+          cp duckdb_source/src/include/duckdb.hpp ./include/
+
+      - name: 6. Commit and push changes if any
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          if (-not (git status --porcelain)) {
+            echo "No changes detected. DuckDB is up-to-date."
+            exit 0
+          }
+          echo "Changes detected. Committing new version..."
+          git add ./lib/libduckdb.a ./include/duckdb.hpp
+          git commit -m "chore(deps): Update DuckDB to version ${{ steps.get_version.outputs.tag }}"
+          git push
+        shell: pwsh
