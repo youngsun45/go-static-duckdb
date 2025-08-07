@@ -1,26 +1,31 @@
 // file: duckdb.go
 package duckdb
 
-// These CGO directives are the heart of this package.
-// They are only active on the "windows" OS and "amd64" architecture.
-// For other systems, they are ignored.
-
 /*
 #cgo windows,amd64 CXXFLAGS: -I./include -std=c++11
 #cgo windows,amd64 LDFLAGS: -L./lib -lduckdb -lstdc++
+
+// We must include the C++ header here.
 #include "duckdb.hpp"
+
+// ---- C WRAPPER FUNCTION ----
+// Go cannot call C++ `DuckDB::LibraryVersion()` directly.
+// So, we create a C-compatible function that wraps the C++ call.
+// The `extern "C"` block tells the C++ compiler to create a function
+// with a simple C name, which cgo can easily find.
+extern "C" const char* duckdb_get_library_version() {
+    return DuckDB::LibraryVersion();
+}
+// ----------------------------
 */
 import "C"
 
-import "unsafe"
-
 // LibraryVersion returns the version of the linked DuckDB library.
-// This is a great way to test if the linking was successful.
+// It works by calling our C wrapper function.
 func LibraryVersion() string {
-    // C.DuckDB::LibraryVersion() returns a C++ string (const char*).
-    c_version := C.DuckDB::LibraryVersion()
-    // We need to convert it to a Go string.
-    return C.GoString(c_version)
-}
+	// Call our C wrapper function, which is exposed to Go via the C pseudo-package.
+	c_version := C.duckdb_get_library_version()
 
-// You can add more Go functions here to wrap other DuckDB C++ APIs.
+	// Convert the C string (const char*) to a Go string.
+	return C.GoString(c_version)
+}
