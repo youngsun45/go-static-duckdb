@@ -1,4 +1,5 @@
-# file: .github/workflows/update-duckdb.yml
+# .github/workflows/update-duckdb.yml
+
 name: Update pre-compiled DuckDB library
 
 on:
@@ -9,6 +10,7 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    
     steps:
       - name: 1. Checkout a copy of our repository
         uses: actions/checkout@v4
@@ -18,10 +20,13 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          # 在这里，我们增加了 mingw-w64-ucrt-x86_64-github-cli 这个包
+          # 这会告诉 Action 在安装编译工具的同时，也安装好 GitHub CLI 工具
           install: >-
             git
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-github-cli
 
       - name: 3. Get latest DuckDB version tag
         id: get_version
@@ -33,6 +38,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 后面的步骤保持不变...
       - name: 4. Clone and build DuckDB from source
         shell: msys2 {0}
         run: |
